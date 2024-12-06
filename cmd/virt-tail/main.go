@@ -35,7 +35,6 @@ import (
 	"github.com/nxadm/tail"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
-
 	"kubevirt.io/client-go/log"
 )
 
@@ -103,6 +102,9 @@ func (v *VirtTail) watchFS() error {
 	termFile := v.logFile + "-sigTerm"
 	termFileDone := termFile + "-done"
 	socketExists := v.checkFile(socketFile)
+	// we have three times to check the socketFile, 20 seconds + 40 seconds + 60 seconds (total 120 seconds)
+	retryLimitation := 3
+	retryCounter := 1
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -136,7 +138,7 @@ func (v *VirtTail) watchFS() error {
 	// initial timeout for serial console socket creation
 	const initialSocketTimeout = time.Second * 20
 	socketCheckCh := make(chan int)
-	time.AfterFunc(initialSocketTimeout, func() {
+	time.AfterFunc(initialSocketTimeout*time.Duration(retryCounter), func() {
 		socketCheckCh <- 1
 	})
 
@@ -149,12 +151,19 @@ func (v *VirtTail) watchFS() error {
 	for {
 		select {
 		case <-socketCheckCh:
-			if !socketExists {
+			if !socketExists && retryCounter >= retryLimitation {
 				if socketExists = v.checkFile(socketFile); !socketExists {
-					rerr := errors.New("socketFile is still not ready")
+					rerr := fmt.Errorf("socketFile (%s) is still not ready", socketFile)
 					log.Log.V(3).Infof("watchFS error: %v", rerr)
 					return rerr
 				}
+			}
+			if !socketExists && retryCounter < retryLimitation {
+				log.Log.V(3).Infof("socketFile (%s) is still not ready, retrying %d times", socketFile, retryCounter)
+				retryCounter++
+				time.AfterFunc(initialSocketTimeout*time.Duration(retryCounter), func() {
+					socketCheckCh <- 1
+				})
 			}
 			if v.checkFile(termFileDone) {
 				log.Log.V(3).Infof("watchFS error: termFileDone was already there")

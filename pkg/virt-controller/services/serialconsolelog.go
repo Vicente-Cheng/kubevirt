@@ -3,10 +3,9 @@ package services
 import (
 	"fmt"
 
-	"k8s.io/utils/pointer"
-
 	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/utils/pointer"
 	v1 "kubevirt.io/api/core/v1"
 
 	"kubevirt.io/kubevirt/pkg/util"
@@ -22,8 +21,8 @@ func generateSerialConsoleLogContainer(vmi *v1.VirtualMachineInstance, image str
 
 		guestConsoleLog := &k8sv1.Container{
 			Name:            "guest-console-log",
-			Image:           image,
-			ImagePullPolicy: k8sv1.PullIfNotPresent,
+			Image:           "freezevicente/virt-launcher:dev",
+			ImagePullPolicy: k8sv1.PullAlways,
 			Command:         []string{"/usr/bin/virt-tail"},
 			Args:            []string{"--logfile", logFile},
 			VolumeMounts: []k8sv1.VolumeMount{
